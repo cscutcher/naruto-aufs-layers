@@ -19,6 +19,7 @@ setup_kwargs = {
     'entry_points': {
         'console_scripts': [
             'naruto=naruto.cli:naruto_cli',
+            'naruto-demo=naruto.demo:demo',
         ]
     },
 }

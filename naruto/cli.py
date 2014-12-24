@@ -236,10 +236,16 @@ def find_mounts(layer):
 
 
 @_modification_command
-def delete(layer):
+@click.option('--no-prompt', default=False, is_flag=True)
+def delete(layer, no_prompt):
     '''
     Delete a layer
     '''
+    if no_prompt:
+        confirm = click.echo
+    else:
+        confirm = lambda message: click.confirm(message, abort=True)
+
     if layer.has_children:
         click.secho(
             'WARNING: This layer has {} direct children and a further {} descendants.'.format(
@@ -248,16 +254,15 @@ def delete(layer):
             fg='red')
 
     if layer.mounted:
-        click.confirm(
-            '{} is currently mounted. Must unmount first. Continue?'.format(layer),
-            abort=True)
+        confirm(
+            '{} is currently mounted. Must unmount first. Continue?'.format(layer))
         layer.unmount_all()
 
-    click.confirm(
+    confirm(
         click.style(
             'This will irreversible delete {} and all {} descendants. Continue?'.format(
                 layer, len(layer.descendants)),
-            fg='red'), abort=True)
+            fg='red'))
 
     shutil.rmtree(str(layer.path.resolve()))
 
