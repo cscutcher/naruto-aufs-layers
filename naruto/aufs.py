@@ -6,7 +6,7 @@ import collections
 import logging
 import pathlib
 import re
-import sh
+from naruto.mount import mount, umount
 
 DEV_LOGGER = logging.getLogger(__name__)
 AUFS_SYS_FOLDER = pathlib.Path('/sys/fs/aufs/')
@@ -58,7 +58,7 @@ class AUFSMount(object):
         return pathlib.Path(self._mount_entry.file)
 
     def _run_mount(self, *args, **kwargs):
-        sh.mount('none', str(self.file.resolve()), *args, types='aufs', **kwargs)
+        mount('none', str(self.file.resolve()), *args, types='aufs', **kwargs)
 
     def update(self, aufs_branches=None):
         '''
@@ -87,7 +87,7 @@ class AUFSMount(object):
 
     def unmount(self):
         DEV_LOGGER.debug('Unmounting %r', self)
-        sh.umount(str(self.file.resolve()))
+        umount(str(self.file.resolve()))
 
     def get_leaf(self):
         '''

@@ -1,30 +1,68 @@
 # -*- coding: utf-8 -*-
 """
-Commands for cli
+Main group for naruto cli
 """
 import io
 import logging
 import os
-import os.path
 import pathlib
 import shutil
 
 import click
 
-from naruto import NarutoLayer
+from naruto import NarutoLayer, LayerNotFound
 
 DEV_LOGGER = logging.getLogger(__name__)
-_DEFAULT_NARUTO_DIR = '~/.naruto/'
+DEFAULT_NARUTO_HOME = pathlib.Path(os.path.expanduser('~/.naruto'))
+DEFAULT_LOG_LEVEL = logging.INFO
+
+
+class CLIContext(object):
+    '''
+    Context for CLI
+    '''
+    def __init__(self):
+        self.naruto_home = DEFAULT_NARUTO_HOME
+
+
+cli_context = click.make_pass_decorator(CLIContext, ensure=True)
 
 
 @click.group()
-@click.option('-V', '--verbosity', type=int, help='Verbosity of logging', default=logging.INFO)
-def cli(verbosity):
+@click.option(
+    '--naruto-home',
+    default=str(DEFAULT_NARUTO_HOME),
+    type=click.Path(
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        readable=True,
+        resolve_path=True,
+        exists=False),
+    help=(
+        'Set default config directory used to store and retrieve layers. Default: {}'.format(
+            DEFAULT_NARUTO_HOME)))
+@click.option(
+    '--verbosity',
+    '-V',
+    help='Set verbosity level explicitly (int or CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET)',
+    default=DEFAULT_LOG_LEVEL,
+    type=str)
+@cli_context
+def naruto_cli(ctx, naruto_home, verbosity):
     '''
-    Naruto CLI
+    CLI for naruto
     '''
-    DEV_LOGGER.debug('Verbosity is %r', verbosity)
+    try:
+        verbosity = int(verbosity)
+    except ValueError:
+        #Ints and strings are ok
+        pass
     logging.basicConfig(level=verbosity)
+    DEV_LOGGER.debug('Set log level to %s', verbosity)
+
+    ctx.naruto_home = pathlib.Path(naruto_home)
+    DEV_LOGGER.debug('Home path is %r', ctx.naruto_home)
 
 
 class _LayerLookup(click.ParamType):
@@ -36,25 +74,38 @@ class _LayerLookup(click.ParamType):
     def __init__(self, allow_discovery=True):
         self._allow_discovery = allow_discovery
 
-    def convert(self, value, param, context):
+    def convert(self, value, param, local_context):
         '''
         Parse Naruto argument
         '''
         DEV_LOGGER.debug('Trying to find root layer for value %r', value)
-
         root_spec, _, layer_spec = value.partition(':')
+        cli_context = local_context.ensure_object(CLIContext)
 
         if not root_spec and self._allow_discovery:
-            layer = NarutoLayer.find_layer_mounted_at_dest(pathlib.Path(os.getcwd()))
+            try:
+                layer = NarutoLayer.find_layer_mounted_at_dest(pathlib.Path(os.getcwd()))
+            except LayerNotFound:
+                self.fail(
+                    'Couldn\'t auto-discover layer. '
+                    'You must in a directory which is a mounted layer for auto-discovery to work')
         else:
             if os.sep in root_spec:
                 naruto_root = pathlib.Path(root_spec)
             else:
-                naruto_root = pathlib.Path(os.path.expanduser(_DEFAULT_NARUTO_DIR)) / root_spec
+                naruto_root = cli_context.naruto_home / root_spec
 
-            naruto_root, = tuple(naruto_root.iterdir())
+            try:
+                naruto_root, = tuple(naruto_root.iterdir())
+            except FileNotFoundError:
+                self.fail('Directory {} does not exist'.format(naruto_root))
+            except ValueError:
+                self.fail('Unexpected number of folders in {}'.format(naruto_root))
 
-            layer = NarutoLayer(naruto_root)
+            try:
+                layer = NarutoLayer(naruto_root)
+            except LayerNotFound:
+                self.fail('{!s} is not a layer.'.format(naruto_root))
 
         if layer_spec:
             layer = layer.find_layer(layer_spec)
@@ -63,19 +114,19 @@ class _LayerLookup(click.ParamType):
         return layer
 
 
-@cli.command()
+@naruto_cli.command()
 @click.argument('name_or_path')
-@click.option(
-    '--is_path', help='Create by full path instead of name in {}'.format(_DEFAULT_NARUTO_DIR))
 @click.option('--description', help='Add description to new naruto layer')
-def create(name_or_path, is_path, description):
+@cli_context
+def create(ctx, name_or_path, description):
     '''
     Create new NarutoLayer
     '''
-    if is_path:
+    if os.sep in name_or_path:
         path = pathlib.Path(name_or_path)
+        DEV_LOGGER.info('Creating at raw path %r', path)
     else:
-        home_naruto_dir = pathlib.Path(os.path.expanduser(_DEFAULT_NARUTO_DIR))
+        home_naruto_dir = ctx.naruto_home
         if not home_naruto_dir.is_dir():
             home_naruto_dir.mkdir()
         home_naruto_dir = home_naruto_dir.resolve()
@@ -87,10 +138,38 @@ def create(name_or_path, is_path, description):
         # Check nothing nasty from user
         assert path.parent == home_naruto_dir
 
+        DEV_LOGGER.info('Creating %r in naruto home %r', home_naruto_dir, name_or_path)
+
         if len(tuple(path.iterdir())) != 0:
             raise Exception('Expected create directory {!s} to be empty'.format(path))
 
     NarutoLayer.create(path, description=description)
+
+
+@naruto_cli.command()
+@cli_context
+def list_home_layers(ctx):
+    '''
+    List layers stored in home directory
+    '''
+    for path in ctx.naruto_home.iterdir():
+        click.echo(str(path))
+
+
+#################################################################################################
+## Commands that modify or inspect existing layers
+#################################################################################################
+def _modification_command(fn):
+    '''
+    Add common options for modification
+    '''
+    fn = naruto_cli.command()(fn)
+    layer_lookup_help = (
+        'This specifies the layer you want to act upon. '
+        'If not specified we will try and discover the layer you have currently mounted.')
+
+    fn = click.option('-l', '--layer', type=_LayerLookup(), default='', help=layer_lookup_help)(fn)
+    return fn
 
 
 class InfoNodeAdapter(object):
@@ -109,126 +188,113 @@ class InfoNodeAdapter(object):
             self.__class__(child).output(io_stream, level + 1, highlight)
 
 
-LAYER_OPT = click.option('-l', '--naruto_layer', type=_LayerLookup(), default='')
-
-
-@cli.command()
-@LAYER_OPT
-def info(naruto_layer):
+@_modification_command
+def info(layer):
     '''
     Get info about a layer
     '''
     io_stream = io.StringIO()
-    InfoNodeAdapter(naruto_layer.get_root()).output(io_stream, 0, highlight=(naruto_layer,))
+    InfoNodeAdapter(layer.get_root()).output(io_stream, 0, highlight=(layer,))
     click.echo(io_stream.getvalue())
 
 
-@cli.command()
-@LAYER_OPT
+@_modification_command
 @click.argument('mount_dest')
-def mount(naruto_layer, mount_dest):
+def mount(layer, mount_dest):
     '''
     Mount a layer
     '''
-    naruto_layer.mount(mount_dest)
+    layer.mount(mount_dest)
 
 
-@cli.command()
-@LAYER_OPT
+@_modification_command
 @click.argument('mount_dest')
 @click.option('--description', help='Add description to new naruto layer')
-def branch_and_mount(naruto_layer, mount_dest, description):
+def branch_and_mount(layer, mount_dest, description):
     '''
     Branch a layer and mount at new dest
     '''
-    naruto_layer.create_child(description=description).mount(mount_dest)
+    layer.create_child(description=description).mount(mount_dest)
 
 
-@cli.command()
-@LAYER_OPT
-def unmount_all(naruto_layer):
+@_modification_command
+def unmount_all(layer):
     '''
     Unmount all uses of this layer
     '''
-    naruto_layer.unmount_all()
+    layer.unmount_all()
 
 
-@cli.command()
-@LAYER_OPT
-def find_mounts(naruto_layer):
+@_modification_command
+def find_mounts(layer):
     '''
     Find where layer is mounted
     '''
-    for branch in naruto_layer.find_mounted_branches_iter():
+    for branch in layer.find_mounted_branches_iter():
         click.echo('{branch.path}={branch.permission} at {branch.mount_point}'.format(
             branch=branch))
 
 
-@cli.command()
-@LAYER_OPT
-def delete(naruto_layer):
+@_modification_command
+def delete(layer):
     '''
     Delete a layer
     '''
-    if naruto_layer.has_children:
+    if layer.has_children:
         click.secho(
             'WARNING: This layer has {} direct children and a further {} descendants.'.format(
-                len(naruto_layer.children),
-                len(naruto_layer.descendants)),
+                len(layer.children),
+                len(layer.descendants)),
             fg='red')
 
-    if naruto_layer.mounted:
+    if layer.mounted:
         click.confirm(
-            '{} is currently mounted. Must unmount first. Continue?'.format(naruto_layer),
+            '{} is currently mounted. Must unmount first. Continue?'.format(layer),
             abort=True)
-        naruto_layer.unmount_all()
+        layer.unmount_all()
 
     click.confirm(
         click.style(
             'This will irreversible delete {} and all {} descendants. Continue?'.format(
-                naruto_layer, len(naruto_layer.descendants)),
+                layer, len(layer.descendants)),
             fg='red'), abort=True)
 
-    shutil.rmtree(str(naruto_layer.path.resolve()))
+    shutil.rmtree(str(layer.path.resolve()))
 
 
-@cli.command()
-@LAYER_OPT
+@_modification_command
 @click.argument('description', default='')
-def description(naruto_layer, description):
+def description(layer, description):
     '''
     Get set layer description
     '''
     if description:
-        naruto_layer.description = description
+        layer.description = description
     else:
-        click.echo(naruto_layer.description)
+        click.echo(layer.description)
 
 
-@cli.command()
-@LAYER_OPT
+@_modification_command
 @click.argument('tags', nargs=-1)
-def tags(naruto_layer, tags):
+def tags(layer, tags):
     '''
     Get set tags
     '''
     if tags:
-        naruto_layer.tags = tags
+        layer.tags = tags
     else:
-        click.echo(', '.join(naruto_layer.tags))
+        click.echo(', '.join(layer.tags))
 
 
-@cli.command()
-@LAYER_OPT
+@_modification_command
 @click.argument('tags', nargs=-1)
-def add_tags(naruto_layer, tags):
+def add_tags(layer, tags):
     ''' Add tag to layer'''
-    naruto_layer.tags = naruto_layer.tags.union(tags)
+    layer.tags = layer.tags.union(tags)
 
 
-@cli.command()
-@LAYER_OPT
+@_modification_command
 @click.argument('tags', nargs=-1)
-def remove_tags(naruto_layer, tags):
+def remove_tags(layer, tags):
     ''' Remove tag from layer'''
-    naruto_layer.tags = naruto_layer.tags.difference(tags)
+    layer.tags = layer.tags.difference(tags)

@@ -13,8 +13,6 @@ import pathlib
 import re
 import uuid
 
-import sh
-
 import naruto.aufs
 import naruto.mount
 
@@ -53,6 +51,10 @@ def create_file(file_path):
         str(file_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
 
     return os.fdopen(filedesc, 'w')
+
+
+class LayerNotFound(Exception):
+    pass
 
 
 class NarutoLayer(collections.abc.Iterable):
@@ -284,26 +286,27 @@ class NarutoLayer(collections.abc.Iterable):
         mount_info = naruto.mount.find_mount_by_dest(destination)
 
         if mount_info.vfstype != 'aufs':
-            raise KeyError('Destination {!r} is not an aufs mount point'.format(destination))
+            raise LayerNotFound(
+                'Destination {!r} is not an aufs mount point'.format(destination))
 
         aufs_mount = naruto.aufs.AUFSMount(mount_info)
         leaf_branch = aufs_mount.get_leaf()
 
         return cls(pathlib.Path(leaf_branch.path).parent)
 
-    def _create_child(self):
+    def _create_child(self, description=''):
         '''
         Create new child
         '''
         DEV_LOGGER.info('Create child of %r', self)
-        return self.__class__.create(self._children_path, is_root=False)
+        return self.__class__.create(self._children_path, is_root=False, description=description)
 
-    def create_child(self):
+    def create_child(self, description=''):
         '''
         Create new child but freeze existing mounts first
         '''
         self.freeze_mounts()
-        return self._create_child()
+        return self._create_child(description=description)
 
     @property
     def parent(self):
@@ -340,7 +343,7 @@ class NarutoLayer(collections.abc.Iterable):
         mount_point = str(destination.resolve())
 
         DEV_LOGGER.debug('Using branches %r. Mount point %r', branch_string, mount_point)
-        sh.mount('none', mount_point, types='aufs', options=branch_string)
+        naruto.mount.mount('none', mount_point, types='aufs', options=branch_string)
 
     def find_mounted_branches_iter(self):
         '''

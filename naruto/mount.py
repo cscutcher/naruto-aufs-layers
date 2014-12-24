@@ -5,9 +5,34 @@ Code to parse mount information
 import collections
 import logging
 import pathlib
+import sh
+import functools
 
 DEV_LOGGER = logging.getLogger(__name__)
 
+
+class NoMountPermissions(Exception):
+    '''
+    Exception when we cant mount for permission issues
+    '''
+
+
+def _wrap_permissions(command):
+    ''' Wrap mount calls with error handler for permissions'''
+
+    @functools.wraps(command)
+    def wrapped(*args, **kwargs):
+        try:
+            return command(*args, **kwargs)
+        except sh.ErrorReturnCode as error:
+            if error.exit_code == 1:
+                raise NoMountPermissions(error)
+            raise
+    return wrapped
+
+sudo = sh.sudo.bake(non_interactive=True)
+mount = _wrap_permissions(sudo.mount)
+umount = _wrap_permissions(sudo.umount)
 
 MountEntry = collections.namedtuple('MountEntry', 'spec file vfstype mntops freq passno')
 

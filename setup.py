@@ -17,7 +17,9 @@ setup_kwargs = {
     'install_requires': ('sh', 'click') + test_requirements,
     'setup_requires': test_requirements,
     'entry_points': {
-        'console_scripts': 'naruto=naruto.cli:cli'
+        'console_scripts': [
+            'naruto=naruto.cli:naruto_cli',
+        ]
     },
 }
 
