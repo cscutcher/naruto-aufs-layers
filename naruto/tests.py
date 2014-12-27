@@ -6,7 +6,7 @@ import logging
 import tempfile
 import unittest
 
-from naruto import NarutoLayer
+from naruto import NarutoLayer, LayerNotFound
 
 DEV_LOGGER = logging.getLogger(__name__)
 
@@ -82,6 +82,6 @@ class TestNaruto(unittest.TestCase):
         Test finding a layer by a mounted path when said path isn't aufs
         '''
         self.assertRaises(
-            KeyError,
+            LayerNotFound,
             NarutoLayer.find_layer_mounted_at_dest,
             '/')
