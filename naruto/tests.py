@@ -113,3 +113,14 @@ class TestNaruto(unittest.TestCase):
         self.assertEqual(
             self.inst.find_layer('root^^').description,
             description)
+
+    def test_tilde_query(self):
+        '''
+        Test a query with a tilde
+        '''
+        child = self.inst.create_child()
+        grandchild = child.create_child()
+
+        self.assertEqual(
+            self.inst.find_layer('root~2'),
+            grandchild)

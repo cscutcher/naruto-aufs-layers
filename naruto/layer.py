@@ -398,8 +398,8 @@ class NarutoLayer(collections.abc.Iterable):
                     raise Exception(
                         'All mounts should be ro. Got {!r}'.format(aufs_mount_branch))
 
-    LAYER_REL_RE = re.compile(r'(?P<command>[\^?\@])(?P<depth>\d*)')
-    LAYER_SPEC_RE = re.compile(r'(?P<reference>[^?\^\@]*)(?P<rel_spec>.*)')
+    LAYER_REL_RE = re.compile(r'(?P<command>[\^?\~\@])(?P<depth>\d*)')
+    LAYER_SPEC_RE = re.compile(r'(?P<reference>[^?\~\^\@]*)(?P<rel_spec>.*)')
 
     def find_layer(self, layer_spec):
         '''
@@ -413,6 +413,9 @@ class NarutoLayer(collections.abc.Iterable):
 
         layer_reference = layer_match.group('reference')
         rel_spec = layer_match.group('rel_spec')
+
+        DEV_LOGGER.debug(
+            'Finding layer. layer_reference=%r rel_spec=%r', layer_reference, rel_spec)
 
         root_layer = self.get_root()
         if layer_reference == 'root':
@@ -437,7 +440,9 @@ class NarutoLayer(collections.abc.Iterable):
             else:
                 depth = int(depth)
 
-            layer = layer._resolve_single_rel_spec(command, depth)
+            new_layer = layer._resolve_single_rel_spec(command, depth)
+            DEV_LOGGER.debug('Resolving %r %r on %r got %r', command, depth, layer, new_layer)
+            layer = new_layer
 
         return layer
 
