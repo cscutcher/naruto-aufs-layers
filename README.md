@@ -3,6 +3,7 @@ naruto-aufs-layers
 
 Wrapper around aufs to make a snapshotting filesystem like thing. Mostly just for fun. 
 
+```
 Usage: naruto [OPTIONS] COMMAND [ARGS]...
 
   CLI for naruto
@@ -27,9 +28,12 @@ Commands:
   remove_tags       Remove tag from layer
   tags              Get set tags
   unmount_all       Unmount all uses of this layer
+```
+
 
 Output from demo script
 =======================
+```
 This will demo the functionality of naruto. It will require permissions to mount and will make a number of modifications in /root/.naruto
 Naruto is a wrapper around aufs that makes use of its layered filesystem to provide a filesystem that can be easily snapshotted and branched without need to loads of copies
 
@@ -94,3 +98,5 @@ BASH> naruto --verbosity 50 delete --no-prompt --layer my_new_layer
 WARNING: This layer has 2 direct children and a further 2 descendants.
 NarutoLayer(id=9831f34df05b4c87af0705506cf8e49a, description=root, tags=(), children=2, descendants=2) is currently mounted. Must unmount first. Continue?
 This will irreversible delete NarutoLayer(id=9831f34df05b4c87af0705506cf8e49a, description=root, tags=(), children=2, descendants=2) and all 2 descendants. Continue?
+
+```
