@@ -85,3 +85,31 @@ class TestNaruto(unittest.TestCase):
             LayerNotFound,
             NarutoLayer.find_layer_mounted_at_dest,
             '/')
+
+    def test_tags(self):
+        '''
+        Test updating tags
+        '''
+        child = self.inst.create_child()
+        grandchild = child.create_child()
+
+        grandchild.tags = grandchild.tags.union(('new_tag',))
+
+        self.assertEqual(
+            self.inst.find_layer('new_tag'),
+            grandchild)
+
+    def test_description(self):
+        '''
+        Test updating description
+        '''
+        child = self.inst.create_child()
+        grandchild = child.create_child()
+
+        description = 'some description'
+
+        grandchild.description = description
+
+        self.assertEqual(
+            self.inst.find_layer('root^^').description,
+            description)
