@@ -3,6 +3,9 @@ naruto-aufs-layers
 
 Wrapper around aufs to make a snapshotting filesystem like thing. Mostly just for fun. 
 
+**This should go without saying but this isn't production ready.
+In fact I'm inclined to significantly rewrite the layout which will make old saves break!**
+
 ```
 Usage: naruto [OPTIONS] COMMAND [ARGS]...
 
