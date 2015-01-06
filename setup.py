@@ -2,6 +2,11 @@
 """
 Setup for naruto aufs snapshot tool
 """
+import sys
+if sys.version_info < (3,):
+    raise Exception('Naruto only supports python 3')
+
+
 import logging
 from setuptools import setup, find_packages
 
